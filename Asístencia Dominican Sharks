@@ -1,1 +1,377 @@
+let modal;
 
+// ===== INICIO =====
+window.onload = function () {
+  modal = document.getElementById("modal");
+};
+
+// ===== MODAL =====
+function openModal(content) {
+  modal.innerHTML = content;
+  modal.style.display = "block";
+}
+
+function closeModal() {
+  modal.style.display = "none";
+  modal.innerHTML = "";
+}
+
+// ===== MENÚ =====
+function setActive(index) {
+  document.querySelectorAll(".bottom-nav div").forEach((el, i) => {
+    el.classList.toggle("active", i === index);
+  });
+}
+
+function goHome() {
+  closeModal();
+}
+
+// ===== STORAGE =====
+function getGroups() {
+  return JSON.parse(localStorage.getItem("groups")) || [];
+}
+
+function saveGroups(groups) {
+  localStorage.setItem("groups", JSON.stringify(groups));
+}
+
+function getStudents() {
+  return JSON.parse(localStorage.getItem("students")) || [];
+}
+
+function saveStudents(students) {
+  localStorage.setItem("students", JSON.stringify(students));
+}
+
+// ===== TOAST =====
+function showToast(msg, type = "success") {
+  let existing = document.getElementById("toast");
+  if (existing) existing.remove();
+
+  const colors = { success: "#16a34a", error: "#dc2626", info: "#2f5ed7" };
+  const toast = document.createElement("div");
+  toast.id = "toast";
+  toast.textContent = msg;
+  Object.assign(toast.style, {
+    position: "fixed",
+    bottom: "105px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: colors[type] || colors.success,
+    color: "white",
+    padding: "10px 22px",
+    borderRadius: "30px",
+    fontSize: "14px",
+    fontWeight: "bold",
+    zIndex: "9999",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+    transition: "opacity 0.4s",
+    whiteSpace: "nowrap",
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = "0"; setTimeout(() => toast.remove(), 400); }, 2000);
+}
+
+// ===== FORM HELPER =====
+// Renders a slide-up form inside the modal with labeled inputs
+function showForm({ title, fields, submitLabel, onSubmit, onBack }) {
+  const fieldHTML = fields.map(f => `
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:5px;">${f.label}</label>
+      <input
+        id="field_${f.key}"
+        type="${f.type || 'text'}"
+        placeholder="${f.placeholder || ''}"
+        inputmode="${f.inputmode || 'text'}"
+        style="width:100%;padding:11px 14px;border:1.5px solid #d1d5db;border-radius:12px;font-size:15px;box-sizing:border-box;outline:none;transition:border 0.2s;"
+        onfocus="this.style.border='1.5px solid #2f5ed7'"
+        onblur="this.style.border='1.5px solid #d1d5db'"
+      />
+    </div>
+  `).join("");
+
+  openModal(`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      ${onBack ? `<button onclick="${onBack}" style="background:#f3f4f6;border-radius:10px;padding:8px 12px;font-size:16px;">←</button>` : ""}
+      <h2 style="margin:0;font-size:20px;">${title}</h2>
+    </div>
+    ${fieldHTML}
+    <button
+      onclick="_formSubmit()"
+      style="width:100%;padding:13px;background:#2f5ed7;color:white;border-radius:14px;font-size:16px;font-weight:bold;margin-top:4px;">
+      ${submitLabel || "Guardar"}
+    </button>
+    <button onclick="closeModal()" style="width:100%;padding:11px;background:#f3f4f6;color:#374151;border-radius:14px;font-size:15px;margin-top:8px;">
+      Cancelar
+    </button>
+  `);
+
+  // Attach submit logic via closure
+  window._formSubmit = function () {
+    const values = {};
+    for (const f of fields) {
+      const val = document.getElementById("field_" + f.key)?.value.trim();
+      if (f.required && !val) {
+        showToast("El campo «" + f.label + "» es obligatorio", "error");
+        return;
+      }
+      values[f.key] = val;
+    }
+    onSubmit(values);
+  };
+}
+
+// ===== GRUPOS =====
+function openGroups() {
+  const groups = getGroups();
+
+  let cards = groups.length
+    ? groups.map((g, i) => {
+        const total = g.students ? g.students.length : 0;
+        return `
+          <div class="card" onclick="openGroup(${i})" style="text-align:left;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-weight:700;font-size:16px;">${g.name}</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:2px;">${total} alumno${total !== 1 ? "s" : ""}</div>
+            </div>
+            <span style="font-size:22px;color:#2f5ed7;">›</span>
+          </div>`;
+      }).join("")
+    : `<p style="text-align:center;color:#9ca3af;margin-top:30px;">Sin grupos aún. Crea el primero.</p>`;
+
+  openModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h2 style="margin:0;">Grupos</h2>
+      <button onclick="closeModal()" style="background:#f3f4f6;border-radius:10px;padding:8px 12px;">✕</button>
+    </div>
+    <button onclick="createGroup()" style="width:100%;padding:12px;background:#2f5ed7;color:white;border-radius:14px;font-size:15px;font-weight:bold;margin-bottom:16px;">
+      + Crear grupo
+    </button>
+    ${cards}
+  `);
+}
+
+function createGroup() {
+  showForm({
+    title: "Nuevo grupo",
+    fields: [{ key: "name", label: "Nombre del grupo", placeholder: "Ej: Sub-15", required: true }],
+    submitLabel: "Crear grupo",
+    onBack: "openGroups()",
+    onSubmit({ name }) {
+      const groups = getGroups();
+      groups.push({ name, students: [], report: [] });
+      saveGroups(groups);
+      showToast("Grupo «" + name + "» creado ✔");
+      openGroups();
+    },
+  });
+}
+
+// ===== GRUPO INDIVIDUAL =====
+function openGroup(index) {
+  const groups = getGroups();
+  const group = groups[index];
+
+  const today = new Date().toLocaleDateString();
+
+  // Check which students already marked today
+  const markedToday = new Set(
+    (group.report || []).filter(r => r.date === today).map(r => r.name)
+  );
+
+  let studentCards = group.students && group.students.length
+    ? group.students.map((s, i) => {
+        const marked = markedToday.has(s.name);
+        return `
+          <div class="card" style="text-align:left;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div>
+                <div style="font-weight:700;font-size:15px;">${s.name}</div>
+                <div style="font-size:12px;color:#6b7280;">Edad: ${s.age || "—"} · Tel: ${s.phone || "—"} · Tutor: ${s.tutor || "—"}</div>
+              </div>
+              ${marked ? `<span style="font-size:11px;background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:20px;font-weight:600;">✔ hoy</span>` : ""}
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="present" onclick="mark(${index},${i},'P')" style="flex:1;border-radius:10px;font-size:13px;">✔ Presente</button>
+              <button class="absent"  onclick="mark(${index},${i},'A')" style="flex:1;border-radius:10px;font-size:13px;">✖ Ausente</button>
+              <button class="repos"   onclick="mark(${index},${i},'R')" style="flex:1;border-radius:10px;font-size:13px;">R Repo</button>
+            </div>
+          </div>`;
+      }).join("")
+    : `<p style="text-align:center;color:#9ca3af;margin-top:20px;">Sin alumnos. Agrega el primero.</p>`;
+
+  openModal(`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+      <button onclick="openGroups()" style="background:#f3f4f6;border-radius:10px;padding:8px 12px;font-size:16px;">←</button>
+      <h2 style="margin:0;flex:1;">${group.name}</h2>
+      <button onclick="addStudent(${index})" style="background:#2f5ed7;color:white;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:bold;">+ Alumno</button>
+    </div>
+    ${studentCards}
+  `);
+}
+
+// ===== AGREGAR ALUMNO AL GRUPO =====
+function addStudent(index) {
+  showForm({
+    title: "Nuevo alumno",
+    fields: [
+      { key: "name",  label: "Nombre",    placeholder: "Nombre completo", required: true },
+      { key: "age",   label: "Edad",      placeholder: "Ej: 15", inputmode: "numeric" },
+      { key: "phone", label: "Teléfono",  placeholder: "809-000-0000", inputmode: "tel" },
+      { key: "tutor", label: "Tutor",     placeholder: "Nombre del tutor" },
+    ],
+    submitLabel: "Agregar alumno",
+    onBack: `openGroup(${index})`,
+    onSubmit(values) {
+      const groups = getGroups();
+      groups[index].students.push(values);
+      saveGroups(groups);
+      showToast(values.name + " agregado ✔");
+      openGroup(index);
+    },
+  });
+}
+
+// ===== ASISTENCIA =====
+function mark(groupIndex, studentIndex, status) {
+  const groups = getGroups();
+  const student = groups[groupIndex].students[studentIndex];
+  const today = new Date().toLocaleDateString();
+
+  // Allow re-marking (overwrite today's entry for this student)
+  const report = groups[groupIndex].report || [];
+  const existingIdx = report.findIndex(r => r.name === student.name && r.date === today);
+
+  const entry = { name: student.name, status, date: today };
+  if (existingIdx >= 0) {
+    report[existingIdx] = entry;
+  } else {
+    report.push(entry);
+  }
+  groups[groupIndex].report = report;
+  saveGroups(groups);
+
+  const labels = { P: "Presente ✔", A: "Ausente ✖", R: "Reposición R" };
+  showToast(student.name + " — " + labels[status]);
+
+  // Refresh the group view
+  openGroup(groupIndex);
+}
+
+// ===== REPORTES =====
+function openReportes() {
+  const groups = getGroups();
+
+  let content = "";
+
+  groups.forEach(g => {
+    if (!g.report || g.report.length === 0) return;
+
+    // Group report entries by date
+    const byDate = {};
+    g.report.forEach(r => {
+      if (!byDate[r.date]) byDate[r.date] = [];
+      byDate[r.date].push(r);
+    });
+
+    const dates = Object.keys(byDate).sort((a, b) => new Date(b) - new Date(a));
+
+    content += `<h3 style="margin:20px 0 10px;color:#2f5ed7;">${g.name}</h3>`;
+
+    dates.forEach(date => {
+      const entries = byDate[date];
+      const present = entries.filter(e => e.status === "P").length;
+      const absent  = entries.filter(e => e.status === "A").length;
+      const repo    = entries.filter(e => e.status === "R").length;
+
+      content += `
+        <div style="background:#f9fafb;border-radius:12px;padding:12px 14px;margin-bottom:10px;border:1px solid #e5e7eb;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;">📅 ${date}</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">✔ ${present} P</span>
+            <span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">✖ ${absent} A</span>
+            <span style="background:#fff7ed;color:#c2410c;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">R ${repo}</span>
+          </div>
+          ${entries.map(r => {
+            const colors = { P: "#15803d", A: "#dc2626", R: "#c2410c" };
+            return `<div style="font-size:13px;color:#374151;padding:3px 0;border-bottom:1px solid #f3f4f6;">
+              <span style="color:${colors[r.status]};font-weight:600;">[${r.status}]</span> ${r.name}
+            </div>`;
+          }).join("")}
+        </div>`;
+    });
+  });
+
+  if (!content) {
+    content = `<p style="text-align:center;color:#9ca3af;margin-top:40px;">Sin reportes aún.</p>`;
+  }
+
+  openModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h2 style="margin:0;">Reportes</h2>
+      <button onclick="closeModal()" style="background:#f3f4f6;border-radius:10px;padding:8px 12px;">✕</button>
+    </div>
+    ${content}
+  `);
+}
+
+// ===== BASE DE DATOS =====
+function openDatabase() {
+  const students = getStudents();
+
+  let cards = students.length
+    ? students.map((s, i) => `
+        <div class="card" style="text-align:left;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:15px;">${s.name}</div>
+            <div style="font-size:12px;color:#6b7280;">Edad: ${s.age || "—"} · Tel: ${s.phone || "—"} · Tutor: ${s.tutor || "—"}</div>
+          </div>
+          <button onclick="deleteStudent(${i})" style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:6px 10px;font-size:13px;">✕</button>
+        </div>`).join("")
+    : `<p style="text-align:center;color:#9ca3af;margin-top:30px;">Base de datos vacía.</p>`;
+
+  openModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h2 style="margin:0;">Base de Datos</h2>
+      <button onclick="closeModal()" style="background:#f3f4f6;border-radius:10px;padding:8px 12px;">✕</button>
+    </div>
+    <button onclick="addStudentGlobal()" style="width:100%;padding:12px;background:#2f5ed7;color:white;border-radius:14px;font-size:15px;font-weight:bold;margin-bottom:16px;">
+      + Agregar alumno
+    </button>
+    ${cards}
+  `);
+}
+
+// ===== AGREGAR ALUMNO GLOBAL =====
+function addStudentGlobal() {
+  showForm({
+    title: "Nuevo alumno",
+    fields: [
+      { key: "name",  label: "Nombre",    placeholder: "Nombre completo", required: true },
+      { key: "age",   label: "Edad",      placeholder: "Ej: 15", inputmode: "numeric" },
+      { key: "phone", label: "Teléfono",  placeholder: "809-000-0000", inputmode: "tel" },
+      { key: "tutor", label: "Tutor",     placeholder: "Nombre del tutor" },
+    ],
+    submitLabel: "Agregar alumno",
+    onBack: "openDatabase()",
+    onSubmit(values) {
+      const students = getStudents();
+      students.push(values);
+      saveStudents(students);
+      showToast(values.name + " agregado ✔");
+      openDatabase();
+    },
+  });
+}
+
+// ===== ELIMINAR ALUMNO GLOBAL =====
+function deleteStudent(index) {
+  const students = getStudents();
+  const name = students[index].name;
+  if (!confirm("¿Eliminar a " + name + "?")) return;
+  students.splice(index, 1);
+  saveStudents(students);
+  showToast(name + " eliminado", "error");
+  openDatabase();
+}
